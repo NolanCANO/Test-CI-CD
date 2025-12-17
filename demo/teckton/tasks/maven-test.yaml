@@ -1,0 +1,21 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: maven-test
+spec:
+  params:
+    - name: MAVEN_ARGS
+      type: string
+      default: "-DskipTests=false"
+  workspaces:
+    - name: source
+    - name: maven-repo
+  steps:
+    - name: test
+      image: maven:3.9.9-eclipse-temurin-17
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: MAVEN_OPTS
+          value: "-Dmaven.repo.local=$(workspaces.maven-repo.path)"
+      script: |
+        mvn test $(params.MAVEN_ARGS)

@@ -1,0 +1,27 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: springboot-ci-run
+spec:
+  pipelineRef:
+    name: springboot-ci
+  params:
+    - name: GIT_URL
+      value: https://github.com/TON_USER/TON_REPO.git
+    - name: GIT_REVISION
+      value: main
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi
+    - name: maven-repo
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi

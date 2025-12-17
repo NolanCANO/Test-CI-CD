@@ -1,0 +1,42 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: springboot-ci
+spec:
+  params:
+    - name: GIT_URL
+      type: string
+    - name: GIT_REVISION
+      type: string
+      default: main
+    - name: MAVEN_ARGS
+      type: string
+      default: "-DskipTests=false"
+  workspaces:
+    - name: source
+    - name: maven-repo
+  tasks:
+    - name: clone
+      taskRef:
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: source
+      params:
+        - name: url
+          value: $(params.GIT_URL)
+        - name: revision
+          value: $(params.GIT_REVISION)
+
+    - name: test
+      runAfter: [clone]
+      taskRef:
+        name: maven-test
+      workspaces:
+        - name: source
+          workspace: source
+        - name: maven-repo
+          workspace: maven-repo
+      params:
+        - name: MAVEN_ARGS
+          value: $(params.MAVEN_ARGS)

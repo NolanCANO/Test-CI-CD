@@ -7,7 +7,7 @@ spec:
     name: springboot-ci
   params:
     - name: GIT_URL
-      value: https://github.com/TON_USER/TON_REPO.git
+      value: https://github.com/NolanCANO/Test-CI-CD.git
     - name: GIT_REVISION
       value: main
   workspaces:

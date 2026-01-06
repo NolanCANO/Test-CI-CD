@@ -2,16 +2,29 @@ apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: springboot-ci
+  labels:
+    app.kubernetes.io/name: springboot-ci-pipeline
+    app.kubernetes.io/component: ci-pipeline
 spec:
+  description: |
+    Pipeline CI/CD générique pour projets Spring Boot.
+    Clone le repository Git, compile le code et exécute les tests Maven.
   params:
     - name: GIT_URL
       type: string
+      description: URL du repository Git à cloner
     - name: GIT_REVISION
       type: string
+      description: Branche, tag ou commit à utiliser
       default: main
     - name: MAVEN_ARGS
       type: string
+      description: Arguments Maven supplémentaires
       default: "-DskipTests=false"
+    - name: PROJECT_DIR
+      type: string
+      description: Chemin relatif vers le dossier contenant pom.xml
+      default: "."
   workspaces:
     - name: source
     - name: maven-repo
@@ -20,7 +33,7 @@ spec:
       taskRef:
         name: git-clone
       workspaces:
-        - name: output
+        - name: source
           workspace: source
       params:
         - name: url
@@ -40,3 +53,5 @@ spec:
       params:
         - name: MAVEN_ARGS
           value: $(params.MAVEN_ARGS)
+        - name: PROJECT_DIR
+          value: $(params.PROJECT_DIR)

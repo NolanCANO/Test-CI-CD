@@ -10,11 +10,16 @@ spec:
       type: string
       default: main
   workspaces:
-    - name: output
+    - name: source
   steps:
     - name: clone
       image: alpine/git
+      workingDir: $(workspaces.source.path)
       script: |
+        set -eux
+        pwd
+        ls -la
         git clone $(params.url) .
         git checkout $(params.revision)
-      workingDir: $(workspaces.output.path)
+        ls -la
+        find . -maxdepth 3 -name pom.xml -print

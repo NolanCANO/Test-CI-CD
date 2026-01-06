@@ -1,0 +1,38 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: springboot-ci-run
+spec:
+  pipelineRef:
+    name: springboot-ci
+  params:
+    - name: GIT_URL
+      value: $(params.git-url)
+    - name: GIT_REVISION
+      value: $(params.git-revision)
+    - name: PROJECT_DIR
+      value: $(params.project-dir)
+    - name: MAVEN_ARGS
+      value: $(params.maven-args)
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: $(params.storage-size)
+    - name: maven-repo
+      emptyDir: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pipeline-params
+data:
+  git-url: "https://github.com/NolanCANO/Test-CI-CD.git"
+  git-revision: "main"
+  project-dir: "demo"
+  storage-size: "1Gi"
+  maven-args: "-DskipTests=false"

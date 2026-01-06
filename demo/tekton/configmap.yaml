@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: springboot-ci-config
+data:
+  # Les valeurs sont chargées depuis config.env
+  # Utilisez: kubectl create configmap springboot-ci-config --from-env-file=config.env
+  GIT_URL: "https://github.com/NolanCANO/Test-CI-CD.git"
+  GIT_REVISION: "main"
+  PROJECT_DIR: "demo"
+  STORAGE_SIZE: "1Gi"
+  MAVEN_ARGS: "-DskipTests=false"

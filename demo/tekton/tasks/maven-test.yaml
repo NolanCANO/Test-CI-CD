@@ -7,13 +7,16 @@ spec:
     - name: MAVEN_ARGS
       type: string
       default: "-DskipTests=false"
+    - name: PROJECT_DIR
+      type: string
+      default: "."
   workspaces:
     - name: source
     - name: maven-repo
   steps:
     - name: test
       image: maven:3.9.9-eclipse-temurin-17
-      workingDir: $(workspaces.source.path)
+      workingDir: $(workspaces.source.path)/$(params.PROJECT_DIR)
       env:
         - name: MAVEN_OPTS
           value: "-Dmaven.repo.local=$(workspaces.maven-repo.path)"

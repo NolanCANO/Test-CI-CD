@@ -1,27 +1,36 @@
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
-  name: springboot-ci-run
+  # ========================================
+  # 📝 VARIABLE À MODIFIER PAR PROJET
+  # ========================================
+  name: springboot-ci-run  # Nom unique du pipeline run (ex: mon-app-ci-run)
 spec:
   pipelineRef:
-    name: springboot-ci
+    name: springboot-ci  # Ne pas modifier (référence au pipeline)
   params:
+    # ========================================
+    # 🔧 VARIABLES À CONFIGURER PAR PROJET
+    # ========================================
     - name: GIT_URL
-      value: https://github.com/NolanCANO/Test-CI-CD.git
+      value: https://github.com/NolanCANO/Test-CI-CD.git  # ⚠️ MODIFIER : URL de votre repository Git
     - name: GIT_REVISION
-      value: main
+      value: main  # ⚠️ MODIFIER si nécessaire : Branche à utiliser (main, develop, etc.)
+    - name: PROJECT_DIR
+      value: demo  # ⚠️ MODIFIER : Chemin relatif vers le dossier contenant pom.xml (ex: "." si à la racine, "backend" si dans un sous-dossier)
+    # - name: MAVEN_ARGS
+    #   value: "-DskipTests=false"  # Optionnel : Arguments Maven supplémentaires
   workspaces:
+    # ========================================
+    # 💾 CONFIGURATION DU STOCKAGE
+    # ========================================
     - name: source
       volumeClaimTemplate:
         spec:
-          accessModes: ["ReadWriteOnce"]
+          accessModes:
+            - ReadWriteOnce
           resources:
             requests:
-              storage: 1Gi
+              storage: 1Gi  # ⚠️ MODIFIER si nécessaire : Taille du volume (augmenter pour gros projets)
     - name: maven-repo
-      volumeClaimTemplate:
-        spec:
-          accessModes: ["ReadWriteOnce"]
-          resources:
-            requests:
-              storage: 1Gi
+      emptyDir: {}  # Cache Maven temporaire (ne pas modifier)

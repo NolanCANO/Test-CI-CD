@@ -50,7 +50,7 @@ jobs:
       - name: Vérifier Tekton Pipelines installé
         run: |
           kubectl get pods -n tekton-pipelines
-          kubectl get tasks 2>/dev/null || echo "Aucune task trouvée"
+          try { kubectl get tasks } catch { Write-Host "Aucune task trouvee" }
       
       - name: Appliquer les Tasks Tekton
         run: |
@@ -64,23 +64,23 @@ jobs:
       - name: Générer et lancer le PipelineRun
         run: |
           # Déterminer la révision Git à utiliser
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            GIT_REVISION="${{ github.event.inputs.git_revision }}"
-          elif [ "${{ github.event_name }}" == "pull_request" ]; then
-            GIT_REVISION="${{ github.head_ref }}"
-          else
-            GIT_REVISION="${{ github.ref_name }}"
-          fi
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $GIT_REVISION = "${{ github.event.inputs.git_revision }}"
+          } elseif ("${{ github.event_name }}" -eq "pull_request") {
+            $GIT_REVISION = "${{ github.head_ref }}"
+          } else {
+            $GIT_REVISION = "${{ github.ref_name }}"
+          }
           
           # Générer un nom unique pour le PipelineRun
-          RUN_NAME="spring-boot-pipeline-run-$(date +%s)"
+          $RUN_NAME = "spring-boot-pipeline-run-$(Get-Date -Format 'yyyyMMddHHmmss')"
           
-          # Créer le PipelineRun à partir du template
-          cat <<EOF | kubectl apply -f -
+          # Créer le PipelineRun
+          @"
           apiVersion: tekton.dev/v1
           kind: PipelineRun
           metadata:
-            name: ${RUN_NAME}
+            name: $RUN_NAME
             labels:
               app: spring-boot
               ci: github-actions
@@ -90,13 +90,13 @@ jobs:
               name: spring-boot-test-pipeline
             params:
               - name: repo-url
-                value: "${GIT_URL}"
+                value: "${{ github.server_url }}/${{ github.repository }}"
               - name: revision
-                value: "${GIT_REVISION}"
+                value: "$GIT_REVISION"
               - name: project-dir
-                value: "${PROJECT_DIR}"
+                value: "demo"
               - name: maven-args
-                value: "${MAVEN_ARGS}"
+                value: "clean test"
             workspaces:
               - name: source
                 volumeClaimTemplate:
@@ -105,65 +105,71 @@ jobs:
                       - ReadWriteOnce
                     resources:
                       requests:
-                        storage: ${STORAGE_SIZE}
-          EOF
+                        storage: 1Gi
+          "@ | kubectl apply -f -
           
-          echo "PipelineRun créé: ${RUN_NAME}"
-          echo "RUN_NAME=${RUN_NAME}" >> $GITHUB_ENV
+          Write-Host "PipelineRun cree: $RUN_NAME"
+          Write-Output "RUN_NAME=$RUN_NAME" >> $env:GITHUB_ENV
       
       - name: Attendre et afficher les logs
         run: |
-          echo "⏳ Attente du démarrage du PipelineRun..."
+          Write-Host "Attente du demarrage du PipelineRun..."
           
           # Attendre que le PipelineRun commence (max 2 minutes)
-          timeout=120
-          elapsed=0
-          while [ $elapsed -lt $timeout ]; do
-            status=$(kubectl get pipelinerun ${{ env.RUN_NAME }} -o jsonpath='{.status.conditions[0].reason}' 2>/dev/null || echo "NotFound")
-            if [ "$status" != "NotFound" ] && [ "$status" != "" ]; then
-              echo "✅ PipelineRun démarré avec status: $status"
+          $timeout = 120
+          $elapsed = 0
+          while ($elapsed -lt $timeout) {
+            $status = kubectl get pipelinerun $env:RUN_NAME -o jsonpath='{.status.conditions[0].reason}' 2>$null
+            if ($status -and $status -ne "") {
+              Write-Host "PipelineRun demarre avec status: $status"
               break
-            fi
-            sleep 5
-            elapsed=$((elapsed + 5))
-          done
+            }
+            Start-Sleep -Seconds 5
+            $elapsed += 5
+          }
           
-          # Afficher les logs (nécessite tkn CLI ou kubectl logs)
-          echo "📋 Logs du PipelineRun:"
-          kubectl get pipelinerun ${{ env.RUN_NAME }} -o yaml
+          # Afficher les infos du PipelineRun
+          Write-Host "Logs du PipelineRun:"
+          kubectl get pipelinerun $env:RUN_NAME -o yaml
           
           # Attendre la fin (max 10 minutes)
-          echo "⏳ Attente de la fin du PipelineRun..."
-          timeout=600
-          elapsed=0
-          while [ $elapsed -lt $timeout ]; do
-            status=$(kubectl get pipelinerun ${{ env.RUN_NAME }} -o jsonpath='{.status.conditions[0].status}' 2>/dev/null)
-            reason=$(kubectl get pipelinerun ${{ env.RUN_NAME }} -o jsonpath='{.status.conditions[0].reason}' 2>/dev/null)
+          Write-Host "Attente de la fin du PipelineRun..."
+          $timeout = 600
+          $elapsed = 0
+          while ($elapsed -lt $timeout) {
+            $status = kubectl get pipelinerun $env:RUN_NAME -o jsonpath='{.status.conditions[0].status}' 2>$null
+            $reason = kubectl get pipelinerun $env:RUN_NAME -o jsonpath='{.status.conditions[0].reason}' 2>$null
             
-            if [ "$status" == "True" ] && [ "$reason" == "Succeeded" ]; then
-              echo "✅ Pipeline réussie !"
+            if ($status -eq "True" -and $reason -eq "Succeeded") {
+              Write-Host "Pipeline reussie!"
               exit 0
-            elif [ "$status" == "False" ]; then
-              echo "❌ Pipeline échouée !"
-              kubectl get pipelinerun ${{ env.RUN_NAME }} -o yaml
+            } elseif ($status -eq "False") {
+              Write-Host "Pipeline echouee!"
+              kubectl get pipelinerun $env:RUN_NAME -o yaml
               exit 1
-            fi
+            }
             
-            sleep 10
-            elapsed=$((elapsed + 10))
-          done
+            Start-Sleep -Seconds 10
+            $elapsed += 10
+          }
           
-          echo "⚠️ Timeout - Pipeline toujours en cours"
+          Write-Host "Timeout - Pipeline toujours en cours"
           exit 1
       
       - name: Récupérer les résultats des tests
         if: always()
         run: |
-          echo "📊 Résumé du PipelineRun:"
-          kubectl get pipelinerun ${{ env.RUN_NAME }} -o jsonpath='{.status}' | jq .
+          Write-Host "Resume du PipelineRun:"
+          kubectl get pipelinerun $env:RUN_NAME -o jsonpath='{.status}' | ConvertFrom-Json | ConvertTo-Json
       
       - name: Nettoyer les anciens PipelineRuns (optionnel)
         if: always()
         run: |
           # Garder seulement les 10 derniers PipelineRuns
-          kubectl get pipelineruns --sort-by=.metadata.creationTimestamp -o name | head -n -10 | xargs -r kubectl delete || true
+          $pipelineruns = kubectl get pipelineruns --sort-by=.metadata.creationTimestamp -o name
+          if ($pipelineruns.Count -gt 10) {
+            $toDelete = $pipelineruns | Select-Object -First ($pipelineruns.Count - 10)
+            if ($toDelete) {
+              $toDelete | ForEach-Object { kubectl delete $_ }
+            }
+          }

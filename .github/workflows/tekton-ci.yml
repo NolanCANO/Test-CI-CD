@@ -87,7 +87,7 @@ jobs:
               git-sha: ${{ github.sha }}
           spec:
             pipelineRef:
-              name: spring-boot-test-pipeline
+              name: springboot-ci
             params:
               - name: repo-url
                 value: "${{ github.server_url }}/${{ github.repository }}"

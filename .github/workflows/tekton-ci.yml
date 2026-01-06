@@ -29,7 +29,7 @@ env:
 jobs:
   tekton-pipeline:
     name: Exécuter Pipeline Tekton
-    runs-on: ubuntu-latest
+    runs-on: self-hosted  # Utilise le runner installé sur votre machine
     
     steps:
       - name: Checkout code
@@ -42,13 +42,8 @@ jobs:
       
       - name: Configuration du contexte Kubernetes
         run: |
-          # Si vous utilisez un cluster cloud (AKS, EKS, GKE), configurez les credentials ici
-          # Exemple pour docker-desktop local :
-          # kubectl config use-context docker-desktop
-          
-          # Pour un cluster externe, utilisez les secrets GitHub :
-          # echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
-          
+          # Utilise le contexte Docker Desktop local
+          kubectl config use-context docker-desktop
           kubectl version --client
           kubectl cluster-info
       

@@ -1,0 +1,174 @@
+name: Tekton CI/CD Pipeline
+
+on:
+  # Déclenchement automatique sur push
+  push:
+    branches:
+      - main
+      - develop
+  
+  # Déclenchement automatique sur Pull Request
+  pull_request:
+    branches:
+      - main
+  
+  # Déclenchement manuel avec bouton "Run workflow" dans GitHub
+  workflow_dispatch:
+    inputs:
+      git_revision:
+        description: 'Git branch/tag/commit à build'
+        required: false
+        default: 'main'
+
+env:
+  GIT_URL: ${{ github.server_url }}/${{ github.repository }}
+  PROJECT_DIR: demo
+  STORAGE_SIZE: 1Gi
+  MAVEN_ARGS: clean test
+
+jobs:
+  tekton-pipeline:
+    name: Exécuter Pipeline Tekton
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configuration kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.28.0'
+      
+      - name: Configuration du contexte Kubernetes
+        run: |
+          # Si vous utilisez un cluster cloud (AKS, EKS, GKE), configurez les credentials ici
+          # Exemple pour docker-desktop local :
+          # kubectl config use-context docker-desktop
+          
+          # Pour un cluster externe, utilisez les secrets GitHub :
+          # echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+          
+          kubectl version --client
+          kubectl cluster-info
+      
+      - name: Vérifier Tekton Pipelines installé
+        run: |
+          kubectl get pods -n tekton-pipelines
+          kubectl get tasks 2>/dev/null || echo "Aucune task trouvée"
+      
+      - name: Appliquer les Tasks Tekton
+        run: |
+          kubectl apply -f demo/tekton/tasks/git-clone.yaml
+          kubectl apply -f demo/tekton/tasks/maven-test.yaml
+      
+      - name: Appliquer le Pipeline Tekton
+        run: |
+          kubectl apply -f demo/tekton/pipeline.yaml
+      
+      - name: Générer et lancer le PipelineRun
+        run: |
+          # Déterminer la révision Git à utiliser
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            GIT_REVISION="${{ github.event.inputs.git_revision }}"
+          elif [ "${{ github.event_name }}" == "pull_request" ]; then
+            GIT_REVISION="${{ github.head_ref }}"
+          else
+            GIT_REVISION="${{ github.ref_name }}"
+          fi
+          
+          # Générer un nom unique pour le PipelineRun
+          RUN_NAME="spring-boot-pipeline-run-$(date +%s)"
+          
+          # Créer le PipelineRun à partir du template
+          cat <<EOF | kubectl apply -f -
+          apiVersion: tekton.dev/v1
+          kind: PipelineRun
+          metadata:
+            name: ${RUN_NAME}
+            labels:
+              app: spring-boot
+              ci: github-actions
+              git-sha: ${{ github.sha }}
+          spec:
+            pipelineRef:
+              name: spring-boot-test-pipeline
+            params:
+              - name: repo-url
+                value: "${GIT_URL}"
+              - name: revision
+                value: "${GIT_REVISION}"
+              - name: project-dir
+                value: "${PROJECT_DIR}"
+              - name: maven-args
+                value: "${MAVEN_ARGS}"
+            workspaces:
+              - name: source
+                volumeClaimTemplate:
+                  spec:
+                    accessModes:
+                      - ReadWriteOnce
+                    resources:
+                      requests:
+                        storage: ${STORAGE_SIZE}
+          EOF
+          
+          echo "PipelineRun créé: ${RUN_NAME}"
+          echo "RUN_NAME=${RUN_NAME}" >> $GITHUB_ENV
+      
+      - name: Attendre et afficher les logs
+        run: |
+          echo "⏳ Attente du démarrage du PipelineRun..."
+          
+          # Attendre que le PipelineRun commence (max 2 minutes)
+          timeout=120
+          elapsed=0
+          while [ $elapsed -lt $timeout ]; do
+            status=$(kubectl get pipelinerun ${{ env.RUN_NAME }} -o jsonpath='{.status.conditions[0].reason}' 2>/dev/null || echo "NotFound")
+            if [ "$status" != "NotFound" ] && [ "$status" != "" ]; then
+              echo "✅ PipelineRun démarré avec status: $status"
+              break
+            fi
+            sleep 5
+            elapsed=$((elapsed + 5))
+          done
+          
+          # Afficher les logs (nécessite tkn CLI ou kubectl logs)
+          echo "📋 Logs du PipelineRun:"
+          kubectl get pipelinerun ${{ env.RUN_NAME }} -o yaml
+          
+          # Attendre la fin (max 10 minutes)
+          echo "⏳ Attente de la fin du PipelineRun..."
+          timeout=600
+          elapsed=0
+          while [ $elapsed -lt $timeout ]; do
+            status=$(kubectl get pipelinerun ${{ env.RUN_NAME }} -o jsonpath='{.status.conditions[0].status}' 2>/dev/null)
+            reason=$(kubectl get pipelinerun ${{ env.RUN_NAME }} -o jsonpath='{.status.conditions[0].reason}' 2>/dev/null)
+            
+            if [ "$status" == "True" ] && [ "$reason" == "Succeeded" ]; then
+              echo "✅ Pipeline réussie !"
+              exit 0
+            elif [ "$status" == "False" ]; then
+              echo "❌ Pipeline échouée !"
+              kubectl get pipelinerun ${{ env.RUN_NAME }} -o yaml
+              exit 1
+            fi
+            
+            sleep 10
+            elapsed=$((elapsed + 10))
+          done
+          
+          echo "⚠️ Timeout - Pipeline toujours en cours"
+          exit 1
+      
+      - name: Récupérer les résultats des tests
+        if: always()
+        run: |
+          echo "📊 Résumé du PipelineRun:"
+          kubectl get pipelinerun ${{ env.RUN_NAME }} -o jsonpath='{.status}' | jq .
+      
+      - name: Nettoyer les anciens PipelineRuns (optionnel)
+        if: always()
+        run: |
+          # Garder seulement les 10 derniers PipelineRuns
+          kubectl get pipelineruns --sort-by=.metadata.creationTimestamp -o name | head -n -10 | xargs -r kubectl delete || true
